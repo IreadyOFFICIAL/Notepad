@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <title>Untitled</title>
+    
+
+  </head>
+    
+  <body>
+  <!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Notepad</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--muted:#94a3b8;--accent:#7c3aed;--glass:rgba(255,255,255,0.04)}
+    *{box-sizing:border-box;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{margin:0;height:100vh;background:linear-gradient(180deg,#071029 0%, #071022 60%);color:#e6eef8;display:flex}
+    .sidebar{width:260px;padding:18px;background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border-right:1px solid rgba(255,255,255,0.03);overflow:auto}
+    .brand{font-weight:700;letter-spacing:0.6px;margin-bottom:12px}
+    .controls{display:flex;gap:8px;margin-bottom:12px}
+    button{background:var(--glass);border:1px solid rgba(255,255,255,0.04);color:inherit;padding:8px 10px;border-radius:10px;cursor:pointer}
+    .notepad-list{display:flex;flex-direction:column;gap:8px}
+    .notepad-item{padding:8px;border-radius:8px;background:transparent;display:flex;justify-content:space-between;align-items:center;border:1px solid transparent}
+    .notepad-item.active{background:linear-gradient(90deg, rgba(124,58,237,0.12), rgba(124,58,237,0.05));border-color:rgba(124,58,237,0.12)}
+    .notepad-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px}
+    .main{flex:1;display:flex;flex-direction:column}
+    .header{display:flex;align-items:center;gap:12px;padding:16px;border-bottom:1px solid rgba(255,255,255,0.03)}
+    .notepad-name{font-size:18px;font-weight:700;background:transparent;border:none;color:inherit}
+    .tabs{display:flex;gap:8px;padding:12px;border-bottom:1px solid rgba(255,255,255,0.02);align-items:center;overflow:auto}
+    .tab{padding:8px 10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.02);cursor:pointer}
+    .tab.active{background:linear-gradient(90deg, rgba(124,58,237,0.16), rgba(124,58,237,0.06));border-color:rgba(124,58,237,0.12)}
+    .editor{flex:1;padding:16px}
+    textarea{width:100%;height:100%;min-height:360px;background:transparent;border:1px dashed rgba(255,255,255,0.04);color:inherit;padding:14px;border-radius:12px;font-size:14px;resize:vertical}
+    .meta{display:flex;gap:10px;align-items:center;color:var(--muted);font-size:13px}
+    .small{font-size:12px;color:var(--muted)}
+    .muted{color:var(--muted)}
+    .row{display:flex;gap:8px}
+    .danger{background:transparent;border:1px solid rgba(255,80,80,0.12)}
+    .footer{padding:10px 16px;border-top:1px solid rgba(255,255,255,0.02);display:flex;align-items:center;justify-content:space-between}
+    .search{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent}
+    @media(max-width:800px){.sidebar{display:none}}
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="brand">Notepad — CodePen</div>
+    <div class="controls">
+      <button id="newNotepadBtn">+ New</button>
+      <button id="importBtn">Import</button>
+      <button id="exportBtn">Export</button>
+    </div>
+    <input id="searchBox" class="search" placeholder="Search notepads..." />
+    <div style="height:12px"></div>
+    <div class="notepad-list" id="notepadList"></div>
+    <div style="height:18px"></div>
+    <div class="small muted">Tip: Double-click a notepad to rename. Pages max per notepad: 20</div>
+  </div>
+
+  <div class="main">
+    <div class="header">
+      <input id="notepadName" class="notepad-name" value="(empty)" />
+      <div class="meta">
+        <div id="pageCount" class="small muted">0 pages</div>
+      </div>
+      <div style="flex:1"></div>
+      <div class="row">
+        <button id="renameBtn">Rename</button>
+        <button id="deleteBtn" class="danger">Delete</button>
+      </div>
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+
+    <div class="editor">
+      <textarea id="editorArea" placeholder="Start writing... (autosaved)"></textarea>
+    </div>
+
+    <div class="footer">
+      <div class="small muted">Auto-saves to localStorage. Max pages: 20 per notepad.</div>
+      <div class="small muted">Notepads saved locally in this browser.</div>
+    </div>
+  </div>
+
+  <script>
+    // Simple Fancy Notepad for CodePen
+    const STORAGE_KEY = 'fancynotepad_v1';
+    const MAX_PAGES = 20;
+
+    // State
+    let state = { notepads: [], activeNotepadId: null, activePageIndex: 0 };
+
+    // DOM
+    const notepadList = document.getElementById('notepadList');
+    const newNotepadBtn = document.getElementById('newNotepadBtn');
+    const notepadNameInput = document.getElementById('notepadName');
+    const tabsEl = document.getElementById('tabs');
+    const editor = document.getElementById('editorArea');
+    const pageCountEl = document.getElementById('pageCount');
+    const renameBtn = document.getElementById('renameBtn');
+    const deleteBtn = document.getElementById('deleteBtn');
+    const searchBox = document.getElementById('searchBox');
+    const importBtn = document.getElementById('importBtn');
+    const exportBtn = document.getElementById('exportBtn');
+
+    // Helpers
+    const uid = () => 'id_' + Math.random().toString(36).slice(2,9);
+    function save(){localStorage.setItem(STORAGE_KEY, JSON.stringify(state));}
+    function load(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if(raw) state = JSON.parse(raw);
+      }catch(e){console.error('load error',e)}
+    }
+
+    // Default starter
+    function ensureStarter(){
+      if(!state.notepads || state.notepads.length===0){
+        const id = uid();
+        state.notepads = [{id,title:'My First Notepad',pages:[{title:'Page 1',content:''}],created:Date.now()}];
+        state.activeNotepadId = id = state.notepads[0].id;
+        state.activePageIndex = 0;
+        save();
+      }
+    }
+
+    // Render sidebar list
+    function renderNotepadList(){
+      const q = searchBox.value.toLowerCase();
+      notepadList.innerHTML='';
+      state.notepads.forEach(n => {
+        if(q && !n.title.toLowerCase().includes(q)) return;
+        const el = document.createElement('div');
+        el.className = 'notepad-item' + (n.id===state.activeNotepadId? ' active':'');
+        const left = document.createElement('div'); left.className='notepad-title'; left.textContent = n.title;
+        left.title = n.title;
+        left.addEventListener('click', ()=>{ selectNotepad(n.id); });
+        left.addEventListener('dblclick', ()=>{ renameNotepadPrompt(n.id); });
+        const right = document.createElement('div'); right.className='small muted'; right.textContent = n.pages.length + 'p';
+        const wrap = document.createElement('div'); wrap.style.display='flex'; wrap.style.gap='8px'; wrap.style.alignItems='center';
+        wrap.appendChild(left); wrap.appendChild(right);
+        el.appendChild(wrap);
+
+        notepadList.appendChild(el);
+      });
+    }
+
+    function selectNotepad(id){
+      if(state.activeNotepadId===id) return;
+      state.activeNotepadId = id;
+      state.activePageIndex = 0;
+      renderAll();
+    }
+
+    function renderTabs(){
+      const np = getActiveNotepad();
+      tabsEl.innerHTML='';
+      if(!np) return;
+      np.pages.forEach((p,i)=>{
+        const t = document.createElement('div');
+        t.className = 'tab' + (i===state.activePageIndex? ' active':'');
+        t.textContent = p.title || ('Page ' + (i+1));
+        t.title = p.title;
+        t.addEventListener('click', ()=>{ state.activePageIndex = i; renderAll(); });
+        t.addEventListener('dblclick', ()=>{ renamePagePrompt(i); });
+        tabsEl.appendChild(t);
+      });
+      const addBtn = document.createElement('button');
+      addBtn.textContent = '+ Page';
+      addBtn.addEventListener('click', ()=>{ addPage(); });
+      tabsEl.appendChild(addBtn);
+      pageCountEl.textContent = np.pages.length + ' pages';
+    }
+
+    function renderEditor(){
+      const page = getActivePage();
+      editor.value = page ? page.content : '';
+      notepadNameInput.value = getActiveNotepad()?.title || '(untitled)';
+    }
+
+    function renderAll(){
+      renderNotepadList(); renderTabs(); renderEditor(); save();
+    }
+
+    function getActiveNotepad(){ return state.notepads.find(n=>n.id===state.activeNotepadId); }
+    function getActivePage(){ const n=getActiveNotepad(); return n && n.pages[state.activePageIndex]; }
+
+    // Actions
+    function newNotepad(){
+      const id = uid();
+      const title = 'Notepad ' + (state.notepads.length+1);
+      const np = {id,title,pages:[{title:'Page 1',content:''}],created:Date.now()};
+      state.notepads.unshift(np);
+      state.activeNotepadId = id; state.activePageIndex = 0; save(); renderAll();
+    }
+
+    function deleteActiveNotepad(){
+      if(!getActiveNotepad()) return;
+      if(!confirm('Delete this notepad? This cannot be undone.')) return;
+      state.notepads = state.notepads.filter(n=>n.id!==state.activeNotepadId);
+      if(state.notepads.length>0){ state.activeNotepadId = state.notepads[0].id; state.activePageIndex=0 } else { state.activeNotepadId=null; state.activePageIndex=0 }
+      save(); renderAll();
+    }
+
+    function renameNotepadPrompt(id){
+      const np = state.notepads.find(x=>x.id===id); if(!np) return;
+      const val = prompt('Rename notepad', np.title); if(val==null) return;
+      np.title = val.trim()||np.title; save(); renderAll();
+    }
+
+    function renameActiveNotepad(){ if(!getActiveNotepad()) return; renameNotepadPrompt(state.activeNotepadId); }
+
+    function addPage(){
+      const np = getActiveNotepad(); if(!np) return;
+      if(np.pages.length>=MAX_PAGES){ alert('Max pages reached ('+MAX_PAGES+')'); return; }
+      np.pages.push({title:'Page ' + (np.pages.length+1), content:''});
+      state.activePageIndex = np.pages.length-1; save(); renderAll();
+    }
+
+    function renamePagePrompt(index){
+      const np = getActiveNotepad(); if(!np) return;
+      const p = np.pages[index]; const val = prompt('Rename page', p.title); if(val==null) return; p.title = val.trim() || p.title; save(); renderAll();
+    }
+
+    // Editor autosave
+    let saveTimer = null;
+    editor.addEventListener('input', ()=>{
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(()=>{
+        const p = getActivePage(); if(!p) return; p.content = editor.value; save();
+      }, 350);
+    });
+
+    // Notepad name edit
+    notepadNameInput.addEventListener('change', ()=>{ const np=getActiveNotepad(); if(!np) return; np.title = notepadNameInput.value.trim() || np.title; save(); renderNotepadList(); });
+
+    // Buttons
+    newNotepadBtn.addEventListener('click', newNotepad);
+    renameBtn.addEventListener('click', renameActiveNotepad);
+    deleteBtn.addEventListener('click', deleteActiveNotepad);
+    searchBox.addEventListener('input', renderNotepadList);
+
+    // Export / Import
+    exportBtn.addEventListener('click', ()=>{
+      const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'fancynotepads.json'; a.click(); URL.revokeObjectURL(url);
+    });
+    importBtn.addEventListener('click', ()=>{
+      const inp = document.createElement('input'); inp.type='file'; inp.accept='application/json';
+      inp.addEventListener('change', (e)=>{
+        const f = e.target.files[0]; if(!f) return; const reader = new FileReader();
+        reader.onload = () => { try{ const imported = JSON.parse(reader.result); if(imported && imported.notepads){ state = imported; save(); renderAll(); alert('Imported successfully') }else alert('Invalid file'); }catch(err){alert('Import error') } }
+        reader.readAsText(f);
+      });
+      inp.click();
+    });
+
+    // Init
+    load(); ensureStarter(); if(!state.activeNotepadId && state.notepads.length) state.activeNotepadId = state.notepads[0].id;
+    renderAll();
+
+    // Before unload, flush editor
+    window.addEventListener('beforeunload', ()=>{
+      const p = getActivePage(); if(p) p.content = editor.value; save();
+    });
+  </script>
+</body>
+</html>
+    
+  </body>
+  
+</html>
